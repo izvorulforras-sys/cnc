@@ -1,30 +1,504 @@
 <!DOCTYPE html>
 <html lang="hu">
 <head>
-<meta charset="UTF-8">
-<title>CNC Vilmos</title>
-<style>
-body {
-    margin:0;
-    font-family:Arial;
-    background:#111;
-    color:white;
-    text-align:center;
-}
-h1 {
-    margin-top:100px;
-    font-size:50px;
-}
-p {
-    font-size:20px;
-    color:#aaa;
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Wanhao Duplicator 6 – Telefonos vezérlő</title>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <style>
+    :root{
+      --bg1:#03112d;
+      --bg2:#071a42;
+      --card:#0d1c3aee;
+      --card2:#243557;
+      --text:#ffffff;
+      --muted:#dbe4ff;
+      --green:#27c15d;
+      --red:#ff4f6d;
+      --blue:#4b92ff;
+      --orange:#ff9d42;
+      --shadow:0 8px 24px rgba(0,0,0,.24);
+      --radius:18px;
+      --inputText:#111827;
+      --gap:8px;
+    }
+    *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+    html,body{
+      width:100%; height:100%; margin:0; overflow:hidden;
+      font-family:Arial,sans-serif; color:var(--text);
+      background:linear-gradient(rgba(3,17,45,.72), rgba(3,17,45,.78)), linear-gradient(180deg, var(--bg2), var(--bg1));
+    }
+    body{ display:flex; align-items:center; justify-content:center; padding:8px; }
+    .app{
+      width:min(100%, 620px); height:calc(100dvh - 16px);
+      display:grid; grid-template-rows:auto 1fr auto; gap:var(--gap);
+    }
+    .card{
+      background:var(--card); border-radius:var(--radius); box-shadow:var(--shadow);
+      border:1px solid rgba(255,255,255,.06);
+    }
+    .title-card{
+      display:flex; align-items:center; justify-content:center; min-height:60px;
+      padding:10px 14px; font-size:clamp(20px,3.3vw,26px); font-weight:700; text-align:center; position:relative;
+    }
+    .badge{
+      position:absolute; top:10px; font-size:11px; padding:5px 8px; border-radius:999px;
+      background:rgba(255,255,255,.10); color:#fff; max-width:42%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .badge.left{ left:10px; }
+    .badge.right{ right:10px; }
+
+    .main{
+      min-height:0; display:grid; grid-template-columns:1.15fr .95fr; gap:8px;
+    }
+    .panel{ padding:10px; min-height:0; overflow:hidden; }
+    .section-title{ text-align:center; font-size:18px; font-weight:700; margin:0 0 10px; }
+
+    .jog-grid{
+      display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:8px;
+    }
+    .jog-btn, .action-btn, .small-btn{
+      border:none; color:#fff; cursor:pointer; border-radius:14px; font-weight:700; box-shadow:var(--shadow);
+    }
+    .jog-btn{ min-height:58px; font-size:20px; background:linear-gradient(180deg, #456aab, #2f4c80); }
+    .jog-btn.z{ background:linear-gradient(180deg, #3c8c60, #266744); }
+    .jog-btn.stop{ background:linear-gradient(180deg, #ff6d86, #ea3f60); }
+    .action-btn{ min-height:42px; font-size:15px; background:linear-gradient(180deg, #4f98ff, #3b82f6); }
+    .action-btn.warn{ background:linear-gradient(180deg, #ff9b51, #ef7c1e); }
+    .action-btn.danger{ background:linear-gradient(180deg, #ff6985, #f24764); }
+    .small-btn{ min-height:36px; font-size:13px; background:rgba(255,255,255,.1); }
+
+    .coord-card, .settings-card, .queue-card, .macro-card{
+      background:var(--card2); border-radius:16px; padding:10px; margin-bottom:8px;
+    }
+    .coord-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .coord-box{ background:rgba(255,255,255,.08); border-radius:14px; padding:10px; text-align:center; }
+    .coord-label{ font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .coord-value{ font-size:22px; font-weight:700; }
+
+    .settings-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .field{ display:grid; gap:4px; }
+    .field label{ font-size:12px; color:var(--muted); font-weight:700; }
+    .field select, .field input, textarea{
+      width:100%; border:none; outline:none; border-radius:12px; min-height:40px;
+      background:#fff; color:var(--inputText); padding:0 12px; font-size:14px;
+    }
+    textarea{ min-height:86px; padding:10px 12px; resize:none; }
+
+    .stack{ display:grid; gap:8px; }
+    .actions-2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .actions-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+
+    .queue-list{
+      min-height:130px; max-height:180px; overflow:auto; display:grid; gap:6px;
+    }
+    .queue-item{
+      background:rgba(255,255,255,.08); border-radius:12px; padding:8px 10px; font-size:13px;
+      display:flex; justify-content:space-between; gap:10px;
+    }
+    .queue-code{ font-family:Consolas, monospace; color:#fff; }
+    .queue-time{ color:var(--muted); white-space:nowrap; }
+    .status{ text-align:center; color:var(--muted); font-size:12px; min-height:16px; line-height:1.3; margin-top:6px; }
+    .foot-note{ font-size:11px; color:var(--muted); line-height:1.35; text-align:center; margin-top:8px; }
+
+    @media (max-width:720px){
+      .app{ width:100%; }
+      .main{ grid-template-columns:1fr; }
+      body{ align-items:stretch; }
+      .app{ height:100dvh; }
+    }
+    @media (max-height:780px){
+      .jog-btn{ min-height:52px; }
+      .coord-value{ font-size:19px; }
+      .queue-list{ max-height:140px; }
+    }
+  </style>
 </head>
 <body>
+  <div class="app">
+    <div class="card title-card">
+      <div id="syncBadge" class="badge left">Demo mód</div>
+      🖨️ Wanhao Duplicator 6
+      <div id="modeBadge" class="badge right">Telefonos vezérlés</div>
+    </div>
 
-<h1>CNC Megmunkálás</h1>
-<p>villy.ro - CNC szolgáltatások</p>
+    <div class="main">
+      <div class="card panel">
+        <div class="section-title">X / Y / Z mozgatás</div>
 
+        <div class="coord-card">
+          <div class="coord-grid">
+            <div class="coord-box"><div class="coord-label">X</div><div id="xValue" class="coord-value">0.00</div></div>
+            <div class="coord-box"><div class="coord-label">Y</div><div id="yValue" class="coord-value">0.00</div></div>
+            <div class="coord-box"><div class="coord-label">Z</div><div id="zValue" class="coord-value">0.00</div></div>
+          </div>
+        </div>
+
+        <div class="jog-grid">
+          <button class="jog-btn" data-axis="Y" data-delta="10">Y+</button>
+          <button class="jog-btn z" data-axis="Z" data-delta="1">Z+</button>
+          <button class="jog-btn" data-axis="X" data-delta="10">X+</button>
+
+          <button class="jog-btn" data-axis="X" data-delta="-10">X−</button>
+          <button class="jog-btn stop" id="homeAllBtn">HOME</button>
+          <button class="jog-btn" data-axis="Y" data-delta="-10">Y−</button>
+
+          <button class="jog-btn z" data-axis="Z" data-delta="-1">Z−</button>
+          <button class="jog-btn warn" id="readPosBtn">M114</button>
+          <button class="jog-btn stop" id="motorsOffBtn">M84</button>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-grid">
+            <div class="field">
+              <label>Lépésköz</label>
+              <select id="stepSize">
+                <option value="0.1">0.1 mm</option>
+                <option value="1" selected>1 mm</option>
+                <option value="10">10 mm</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Feedrate</label>
+              <input id="feedrate" type="number" min="100" max="9000" step="100" value="2400" />
+            </div>
+            <div class="field">
+              <label>Kapcsolat típusa</label>
+              <select id="connectionMode">
+                <option value="demo" selected>Demo</option>
+                <option value="octoprint">OctoPrint</option>
+                <option value="custom">Egyedi bridge</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Gép státusz</label>
+              <input id="machineState" type="text" value="Készenlét" readonly />
+            </div>
+          </div>
+        </div>
+
+        <div class="actions-3">
+          <button class="action-btn" id="homeXBtn">Home X</button>
+          <button class="action-btn" id="homeYBtn">Home Y</button>
+          <button class="action-btn" id="homeZBtn">Home Z</button>
+        </div>
+      </div>
+
+      <div class="card panel stack">
+        <div class="macro-card">
+          <div class="section-title">Gyors parancsok</div>
+          <div class="actions-2" style="margin-bottom:8px;">
+            <button class="action-btn" id="preheatBtn">Előmelegítés</button>
+            <button class="action-btn danger" id="cooldownBtn">Lehűtés</button>
+          </div>
+          <div class="actions-2">
+            <button class="action-btn warn" id="parkBtn">Fej parkolás</button>
+            <button class="action-btn" id="unlockBtn">Motor ON</button>
+          </div>
+        </div>
+
+        <div class="macro-card">
+          <div class="section-title">Egyedi G-kód</div>
+          <div class="field" style="margin-bottom:8px;">
+            <label>Parancs</label>
+            <textarea id="customGcode" placeholder="Példa:
+G28
+G91
+G1 Z5 F600
+G90"></textarea>
+          </div>
+          <div class="actions-2">
+            <button class="action-btn" id="sendCustomBtn">Küldés</button>
+            <button class="action-btn danger" id="clearQueueBtn">Napló törlése</button>
+          </div>
+        </div>
+
+        <div class="queue-card">
+          <div class="section-title">Parancs napló</div>
+          <div id="queueList" class="queue-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div id="status" class="status">Státusz: indulás...</div>
+      <div class="foot-note">
+        Ez a felület a meglévő LED vezérlő logikájából lett átalakítva 3D nyomtató jog vezérlésre.<br>
+        A valódi mozgatáshoz OctoPrint vagy egy saját HTTP → soros bridge szükséges.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyA6x6CQGKTGm3mQcU8lCF2AzQ-ti24NPkg",
+      authDomain: "led-vezerlo.firebaseapp.com",
+      databaseURL: "https://led-vezerlo-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "led-vezerlo",
+      storageBucket: "led-vezerlo.firebasestorage.app",
+      messagingSenderId: "843559426080",
+      appId: "1:843559426080:web:c7721a0821ce5fbd3e8445"
+    };
+
+    const SHARED_PATH = "wanhaoD6/shared";
+    const OCTOPRINT_URL = "http://YOUR-OCTOPRINT-IP/api/printer/command";
+    const OCTOPRINT_API_KEY = "PASTE_API_KEY_HERE";
+    const CUSTOM_BRIDGE_URL = "http://YOUR-BRIDGE-IP:5000/gcode";
+
+    let dbRef = null;
+    let firebaseReady = false;
+    let sharedState = createDefaultState();
+
+    const xValue = document.getElementById("xValue");
+    const yValue = document.getElementById("yValue");
+    const zValue = document.getElementById("zValue");
+    const queueList = document.getElementById("queueList");
+    const statusEl = document.getElementById("status");
+    const syncBadge = document.getElementById("syncBadge");
+    const machineState = document.getElementById("machineState");
+    const stepSizeEl = document.getElementById("stepSize");
+    const feedrateEl = document.getElementById("feedrate");
+    const connectionModeEl = document.getElementById("connectionMode");
+    const customGcodeEl = document.getElementById("customGcode");
+
+    function createDefaultState(){
+      return {
+        position: { x: 0, y: 0, z: 0 },
+        settings: { step: 1, feedrate: 2400, connectionMode: "demo" },
+        queue: [],
+        meta: { machineState: "Készenlét", lastAction: "Kész", updatedAt: Date.now() }
+      };
+    }
+
+    function normalizeState(data){
+      const fallback = createDefaultState();
+      if (!data) return fallback;
+      return {
+        position: {
+          x: Number(data?.position?.x ?? 0),
+          y: Number(data?.position?.y ?? 0),
+          z: Number(data?.position?.z ?? 0)
+        },
+        settings: {
+          step: Number(data?.settings?.step ?? 1),
+          feedrate: Number(data?.settings?.feedrate ?? 2400),
+          connectionMode: String(data?.settings?.connectionMode ?? "demo")
+        },
+        queue: Array.isArray(data?.queue) ? data.queue.slice(0, 30) : [],
+        meta: {
+          machineState: String(data?.meta?.machineState ?? "Készenlét"),
+          lastAction: String(data?.meta?.lastAction ?? "Kész"),
+          updatedAt: Number(data?.meta?.updatedAt ?? Date.now())
+        }
+      };
+    }
+
+    function setStatus(text){ statusEl.textContent = `Státusz: ${text}`; }
+    function setSyncBadge(text){ syncBadge.textContent = text; }
+
+    function render(){
+      xValue.textContent = sharedState.position.x.toFixed(2);
+      yValue.textContent = sharedState.position.y.toFixed(2);
+      zValue.textContent = sharedState.position.z.toFixed(2);
+      stepSizeEl.value = String(sharedState.settings.step);
+      feedrateEl.value = String(sharedState.settings.feedrate);
+      connectionModeEl.value = sharedState.settings.connectionMode;
+      machineState.value = sharedState.meta.machineState;
+
+      queueList.innerHTML = "";
+      if (!sharedState.queue.length) {
+        queueList.innerHTML = '<div class="queue-item"><span class="queue-code">Még nincs elküldött parancs</span><span class="queue-time">—</span></div>';
+        return;
+      }
+      sharedState.queue.slice().reverse().forEach(item => {
+        const row = document.createElement("div");
+        row.className = "queue-item";
+        row.innerHTML = `<span class="queue-code">${escapeHtml(item.code)}</span><span class="queue-time">${new Date(item.at).toLocaleTimeString('hu-HU')}</span>`;
+        queueList.appendChild(row);
+      });
+    }
+
+    function escapeHtml(text){
+      return String(text)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;');
+    }
+
+    function pushQueue(code){
+      sharedState.queue.push({ code, at: Date.now() });
+      sharedState.queue = sharedState.queue.slice(-30);
+    }
+
+    function markMeta(actionText, machine = sharedState.meta.machineState){
+      sharedState.meta = { machineState: machine, lastAction: actionText, updatedAt: Date.now() };
+    }
+
+    function persistState(actionText){
+      markMeta(actionText, sharedState.meta.machineState);
+      render();
+      if (!firebaseReady || !dbRef) {
+        setStatus(actionText + " (helyi)");
+        return Promise.resolve();
+      }
+      return dbRef.set(sharedState)
+        .then(() => setStatus(actionText))
+        .catch((error) => {
+          console.error(error);
+          setStatus("Mentési hiba");
+        });
+    }
+
+    function applyRemoteState(data){
+      sharedState = normalizeState(data);
+      render();
+      setStatus(sharedState.meta.lastAction || "Szinkron aktív");
+    }
+
+    function initFirebase(){
+      if (typeof firebase === "undefined") {
+        render();
+        setSyncBadge("Firebase hiba");
+        setStatus("A Firebase könyvtár nem töltött be");
+        return;
+      }
+      try {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        dbRef = firebase.database().ref(SHARED_PATH);
+        firebaseReady = true;
+        setSyncBadge("Firebase online");
+        dbRef.once("value").then((snapshot) => {
+          if (!snapshot.exists()) return dbRef.set(sharedState);
+          applyRemoteState(snapshot.val());
+        });
+        dbRef.on("value", (snapshot) => {
+          if (snapshot.exists()) applyRemoteState(snapshot.val());
+        }, () => {
+          setSyncBadge("Szinkron hiba");
+        });
+      } catch (error) {
+        console.error(error);
+        setSyncBadge("Firebase hiba");
+        setStatus("Kapcsolódási hiba");
+      }
+    }
+
+    async function sendGcode(code, simulateMove = null){
+      const mode = connectionModeEl.value;
+      sharedState.settings.connectionMode = mode;
+      sharedState.settings.step = Number(stepSizeEl.value);
+      sharedState.settings.feedrate = Number(feedrateEl.value || 2400);
+      pushQueue(code);
+
+      try {
+        if (mode === "octoprint") {
+          const res = await fetch(OCTOPRINT_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Api-Key": OCTOPRINT_API_KEY
+            },
+            body: JSON.stringify({ commands: code.split('\n').filter(Boolean) })
+          });
+          if (!res.ok) throw new Error("OctoPrint HTTP hiba: " + res.status);
+          sharedState.meta.machineState = "Parancs elküldve";
+        } else if (mode === "custom") {
+          const res = await fetch(CUSTOM_BRIDGE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ gcode: code })
+          });
+          if (!res.ok) throw new Error("Bridge HTTP hiba: " + res.status);
+          sharedState.meta.machineState = "Bridge elküldve";
+        } else {
+          sharedState.meta.machineState = "Demo mód";
+        }
+
+        if (simulateMove) {
+          sharedState.position[simulateMove.axis.toLowerCase()] += simulateMove.delta;
+          if (simulateMove.axis === "Z") {
+            sharedState.position.z = Math.max(0, sharedState.position.z);
+          }
+        }
+        await persistState(`Küldve: ${code.split('\n')[0]}`);
+      } catch (error) {
+        console.error(error);
+        sharedState.meta.machineState = "Hiba";
+        await persistState(`Hiba: ${error.message}`);
+      }
+    }
+
+    function buildRelativeMove(axis, delta){
+      const feed = Number(feedrateEl.value || 2400);
+      return `G91\nG1 ${axis}${delta} F${feed}\nG90`;
+    }
+
+    function moveAxis(axis, direction){
+      const step = Number(stepSizeEl.value || 1);
+      const delta = direction * step;
+      sendGcode(buildRelativeMove(axis, delta), { axis, delta });
+    }
+
+    document.querySelectorAll("[data-axis]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const axis = btn.dataset.axis;
+        const raw = Number(btn.dataset.delta);
+        const direction = Math.sign(raw || 1);
+        moveAxis(axis, direction);
+      });
+    });
+
+    document.getElementById("homeAllBtn").addEventListener("click", async () => {
+      sharedState.position = { x: 0, y: 0, z: 0 };
+      await sendGcode("G28");
+    });
+    document.getElementById("homeXBtn").addEventListener("click", async () => {
+      sharedState.position.x = 0;
+      await sendGcode("G28 X");
+    });
+    document.getElementById("homeYBtn").addEventListener("click", async () => {
+      sharedState.position.y = 0;
+      await sendGcode("G28 Y");
+    });
+    document.getElementById("homeZBtn").addEventListener("click", async () => {
+      sharedState.position.z = 0;
+      await sendGcode("G28 Z");
+    });
+    document.getElementById("readPosBtn").addEventListener("click", () => sendGcode("M114"));
+    document.getElementById("motorsOffBtn").addEventListener("click", () => sendGcode("M84"));
+    document.getElementById("unlockBtn").addEventListener("click", () => sendGcode("M17"));
+    document.getElementById("preheatBtn").addEventListener("click", () => sendGcode("M140 S60\nM104 S200"));
+    document.getElementById("cooldownBtn").addEventListener("click", () => sendGcode("M104 S0\nM140 S0"));
+    document.getElementById("parkBtn").addEventListener("click", () => sendGcode("G91\nG1 Z10 F600\nG90\nG1 X0 Y0 F3000"));
+    document.getElementById("sendCustomBtn").addEventListener("click", () => {
+      const code = customGcodeEl.value.trim();
+      if (!code) return setStatus("Adj meg G-kódot");
+      sendGcode(code);
+    });
+    document.getElementById("clearQueueBtn").addEventListener("click", () => {
+      sharedState.queue = [];
+      persistState("Napló törölve");
+    });
+
+    stepSizeEl.addEventListener("change", () => {
+      sharedState.settings.step = Number(stepSizeEl.value || 1);
+      persistState(`Lépésköz → ${sharedState.settings.step} mm`);
+    });
+    feedrateEl.addEventListener("change", () => {
+      sharedState.settings.feedrate = Number(feedrateEl.value || 2400);
+      persistState(`Feedrate → ${sharedState.settings.feedrate}`);
+    });
+    connectionModeEl.addEventListener("change", () => {
+      sharedState.settings.connectionMode = connectionModeEl.value;
+      persistState(`Kapcsolat → ${connectionModeEl.value}`);
+    });
+
+    render();
+    initFirebase();
+    setStatus("Wanhao D6 vezérlő betöltve");
+  </script>
 </body>
 </html>
