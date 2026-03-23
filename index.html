@@ -18,6 +18,8 @@
       --green2:#1b8f4c;
       --red:#ff5b72;
       --red2:#d93c53;
+      --amber:#ffbc42;
+      --amber2:#d58a00;
       --shadow:0 10px 30px rgba(0,0,0,.28);
       --radius:20px;
     }
@@ -71,29 +73,36 @@
 
     .step-card{
       padding:14px;
+      display:grid;
+      gap:10px;
     }
 
     .label{
       text-align:center;
       font-size:14px;
       color:var(--muted);
-      margin-bottom:10px;
       font-weight:700;
     }
 
-    .step-grid{
+    .step-grid, .mode-grid{
       display:grid;
       grid-template-columns:repeat(3,1fr);
       gap:8px;
     }
 
-    .step-btn, .move-btn, .z-btn, .small-btn{
+    .step-btn, .move-btn, .z-btn, .small-btn, .mode-btn{
       border:none;
       border-radius:18px;
       color:#fff;
       font-weight:700;
       cursor:pointer;
       box-shadow:var(--shadow);
+      transition:transform .06s ease, opacity .15s ease, filter .15s ease;
+    }
+
+    .step-btn:active, .move-btn:active, .z-btn:active, .small-btn:active, .mode-btn:active{
+      transform:scale(.97);
+      filter:brightness(.96);
     }
 
     .step-btn{
@@ -104,6 +113,16 @@
 
     .step-btn.active{
       background:linear-gradient(180deg,var(--blue),var(--blue2));
+    }
+
+    .mode-btn{
+      min-height:46px;
+      font-size:14px;
+      background:rgba(255,255,255,.08);
+    }
+
+    .mode-btn.active{
+      background:linear-gradient(180deg,var(--amber),var(--amber2));
     }
 
     .main{
@@ -180,10 +199,11 @@
 
     .status{
       text-align:center;
-      min-height:18px;
+      min-height:34px;
       font-size:12px;
       color:var(--muted);
-      line-height:1.35;
+      line-height:1.4;
+      white-space:pre-line;
     }
 
     @media (max-width:420px){
@@ -191,6 +211,7 @@
       .move-btn{ font-size:30px; }
       .z-btn{ min-height:116px; }
       .title{ font-size:21px; }
+      .mode-btn{ font-size:13px; }
     }
   </style>
 </head>
@@ -198,7 +219,7 @@
   <div class="app">
     <div class="card title">
       Wanhao Duplicator 6
-      <div class="subtitle">Telefonos mozgatás – csak X / Y / Z</div>
+      <div class="subtitle">Telefonos mozgatás – minimal verzió</div>
     </div>
 
     <div class="card step-card">
@@ -208,6 +229,13 @@
         <button class="step-btn active" data-step="1">1</button>
         <button class="step-btn" data-step="10">10</button>
       </div>
+
+      <div class="label">Kapcsolat mód</div>
+      <div class="mode-grid">
+        <button class="mode-btn active" data-mode="demo">DEMO</button>
+        <button class="mode-btn" data-mode="octoprint">OCTO</button>
+        <button class="mode-btn" data-mode="custom">CUSTOM</button>
+      </div>
     </div>
 
     <div class="card main">
@@ -215,15 +243,15 @@
         <div class="xy-title">X / Y</div>
         <div class="xy-grid">
           <div class="empty"></div>
-          <button class="move-btn" data-axis="Y" data-dir="+">▲</button>
+          <button class="move-btn control-btn" data-axis="Y" data-dir="+">▲</button>
           <div class="empty"></div>
 
-          <button class="move-btn" data-axis="X" data-dir="-">◀</button>
-          <button class="move-btn center" id="stopBtn">STOP</button>
-          <button class="move-btn" data-axis="X" data-dir="+">▶</button>
+          <button class="move-btn control-btn" data-axis="X" data-dir="-">◀</button>
+          <button class="move-btn center control-btn" id="stopBtn">STOP</button>
+          <button class="move-btn control-btn" data-axis="X" data-dir="+">▶</button>
 
           <div class="empty"></div>
-          <button class="move-btn" data-axis="Y" data-dir="-">▼</button>
+          <button class="move-btn control-btn" data-axis="Y" data-dir="-">▼</button>
           <div class="empty"></div>
         </div>
       </div>
@@ -231,18 +259,18 @@
       <div class="z-wrap">
         <div class="z-title">Z</div>
         <div class="z-stack">
-          <button class="z-btn" data-axis="Z" data-dir="+">Z+</button>
-          <button class="z-btn" data-axis="Z" data-dir="-">Z−</button>
+          <button class="z-btn control-btn" data-axis="Z" data-dir="+">Z+</button>
+          <button class="z-btn control-btn" data-axis="Z" data-dir="-">Z−</button>
         </div>
       </div>
     </div>
 
     <div class="card footer">
       <div class="small-grid">
-        <button class="small-btn" id="homeBtn">HOME</button>
-        <button class="small-btn" id="motorsBtn">MOTOR OFF</button>
+        <button class="small-btn control-btn" id="homeBtn">HOME</button>
+        <button class="small-btn control-btn" id="motorsBtn">MOTOR OFF</button>
       </div>
-      <div id="status" class="status">Készen áll. Demo módban indul.</div>
+      <div id="status" class="status">Készen áll.</div>
     </div>
   </div>
 
@@ -250,7 +278,7 @@
     // =========================
     // BEÁLLÍTÁSOK
     // =========================
-    const MODE = "demo"; // "demo" | "octoprint" | "custom"
+    let MODE = "demo"; // "demo" | "octoprint" | "custom"
     const OCTOPRINT_URL = "http://192.168.1.50"; // pl. http://192.168.1.50
     const OCTOPRINT_API_KEY = "";
     const CUSTOM_BRIDGE_URL = "http://192.168.1.60:5000/gcode"; // saját bridge végpont
@@ -258,22 +286,75 @@
     const FEEDRATE_Z = 600;
 
     let currentStep = 1;
+    let audioContext = null;
 
     const statusEl = document.getElementById("status");
     const stepButtons = [...document.querySelectorAll(".step-btn")];
+    const modeButtons = [...document.querySelectorAll(".mode-btn")];
     const moveButtons = [...document.querySelectorAll(".move-btn[data-axis], .z-btn[data-axis]")];
     const stopBtn = document.getElementById("stopBtn");
     const homeBtn = document.getElementById("homeBtn");
     const motorsBtn = document.getElementById("motorsBtn");
+    const controlButtons = [...document.querySelectorAll(".control-btn, .step-btn, .mode-btn")];
 
     function setStatus(text){
-      statusEl.textContent = text;
+      statusEl.textContent = `Mód: ${MODE.toUpperCase()} | Lépés: ${currentStep} mm\n${text}`;
+    }
+
+    function initAudio(){
+      if (!audioContext) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (Ctx) audioContext = new Ctx();
+      }
+      if (audioContext && audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+    }
+
+    function beep(freq = 880, duration = 0.04, type = "sine", gainValue = 0.03){
+      initAudio();
+      if (!audioContext) return;
+
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      const now = audioContext.currentTime;
+
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(gainValue, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    }
+
+    function attachButtonSound(){
+      controlButtons.forEach(btn => {
+        btn.addEventListener("click", () => beep());
+      });
     }
 
     function setStep(step){
       currentStep = Number(step);
       stepButtons.forEach(btn => btn.classList.toggle("active", Number(btn.dataset.step) === currentStep));
-      setStatus(`Lépésköz: ${currentStep} mm`);
+      setStatus(`Lépésköz beállítva: ${currentStep} mm`);
+    }
+
+    function setMode(mode){
+      MODE = mode;
+      modeButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.mode === MODE));
+
+      if (MODE === "demo") {
+        setStatus("Demo mód aktív. A gombok működnek, de a nyomtató nem kap parancsot.");
+      } else if (MODE === "octoprint") {
+        setStatus("OctoPrint mód aktív. Ellenőrizd az URL-t és az API kulcsot a fájlban.");
+      } else if (MODE === "custom") {
+        setStatus("Custom mód aktív. Ellenőrizd a bridge URL címet a fájlban.");
+      }
     }
 
     async function sendGcode(commands, actionText){
@@ -344,6 +425,10 @@
       btn.addEventListener("click", () => setStep(btn.dataset.step));
     });
 
+    modeButtons.forEach(btn => {
+      btn.addEventListener("click", () => setMode(btn.dataset.mode));
+    });
+
     moveButtons.forEach(btn => {
       btn.addEventListener("click", async () => {
         const axis = btn.dataset.axis;
@@ -354,6 +439,7 @@
     });
 
     stopBtn.addEventListener("click", async () => {
+      beep(220, 0.08, "square", 0.05);
       await sendGcode(["M112"], "Vészleállítás");
     });
 
@@ -365,8 +451,9 @@
       await sendGcode(["M84"], "Motorok kikapcsolva");
     });
 
+    attachButtonSound();
     setStep(1);
-    setStatus("Készen áll. Ha valódi vezérlés kell, állítsd át a MODE változót.");
+    setMode("demo");
   </script>
 </body>
 </html>
